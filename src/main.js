@@ -52,8 +52,8 @@ function analyzeSalesData(data, options) {
     }));
 
     const sellerIndex = {};
-    sellerStats.forEach(seller => {
-        sellerIndex[seller.id] = seller;
+    data.sellers.forEach(seller => {
+        sellerIndex[seller.id] = sellerStats.find(s => s.id === seller.id);
     });
 
     const productIndex = {};
@@ -64,11 +64,22 @@ function analyzeSalesData(data, options) {
     data.purchase_records.forEach(record => {
         const seller = sellerIndex[record.seller_id];
         
-        if (!seller) return;
+        if (!seller) {
+            console.warn(`Продавец ${record.seller_id} не найден`);
+            return;
+        }
+        
+        if (!record.items || !Array.isArray(record.items)) {
+            console.warn(`Некорректные items в записи продажи`);
+            return;
+        }
         
         record.items.forEach(item => {
             const product = productIndex[item.sku];
-            if (!product) return;
+            if (!product) {
+                console.warn(`Товар ${item.sku} не найден`);
+                return;
+            }
             
             const revenue = calculateRevenue(item, product);
             const cost = product.cost_price * item.quantity;
@@ -86,6 +97,11 @@ function analyzeSalesData(data, options) {
     });
 
     const sellersWithSales = sellerStats.filter(seller => seller.sales_count > 0);
+    
+    if (sellersWithSales.length === 0) {
+        return [];
+    }
+    
     sellersWithSales.sort((a, b) => b.profit - a.profit);
 
     const totalSellers = sellersWithSales.length;
@@ -106,18 +122,18 @@ function analyzeSalesData(data, options) {
         const topProducts = Object.entries(seller.products_sold)
             .sort(([,a], [,b]) => b - a)
             .slice(0, 10)
-            .map(([article, quantity]) => ({
-                article,
+            .map(([sku, quantity]) => ({
+                sku,
                 quantity
             }));
 
         return {
             seller_id: seller.id,
             name: seller.name,
-            revenue: Number(seller.revenue.toFixed(2)),
-            profit: Number(seller.profit.toFixed(2)),
+            revenue: Math.round(seller.revenue * 100) / 100,
+            profit: Math.round(seller.profit * 100) / 100,
             sales_count: seller.sales_count,
-            bonus: Number(seller.bonus.toFixed(2)),
+            bonus: Math.round(seller.bonus * 100) / 100,
             top_products: topProducts
         };
     });
