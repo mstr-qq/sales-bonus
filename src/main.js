@@ -42,52 +42,54 @@ function analyzeSalesData(data, options) {
         throw new Error('В опциях отсутствуют необходимые функции');
     }
 
+    if (typeof calculateRevenue !== "function" || typeof calculateBonus !== "function") {
+        throw new Error('calculateRevenue и calculateBonus должны быть функциями');
+    }
+
     const sellerStats = data.sellers.map(seller => ({
         id: seller.id,
         name: `${seller.first_name} ${seller.last_name}`,
         revenue: 0,
         profit: 0,
         sales_count: 0,
-        products_sold: {}
+        products_sold: {},
+        top_products: []
     }));
 
-    const sellerIndex = {};
-    data.sellers.forEach(seller => {
-        sellerIndex[seller.id] = sellerStats.find(s => s.id === seller.id);
-    });
+    const sellerIndex = sellerStats.reduce((result, sellerStat) => ({
+        ...result,
+        [sellerStat.id]: sellerStat
+    }), {});
 
-    const productIndex = {};
-    data.products.forEach(product => {
-        productIndex[product.article] = product;
-    });
+    const productIndex = data.products.reduce((result, product) => ({
+        ...result,
+        [product.article]: product
+    }), {});
 
     data.purchase_records.forEach(record => {
         const seller = sellerIndex[record.seller_id];
         
         if (!seller) {
-            console.warn(`Продавец ${record.seller_id} не найден`);
+            console.warn(`Продавец с id ${record.seller_id} не найден, пропускаем чек`);
             return;
         }
         
-        if (!record.items || !Array.isArray(record.items)) {
-            console.warn(`Некорректные items в записи продажи`);
-            return;
-        }
+        seller.sales_count += 1;
+        seller.revenue += record.total_amount;
         
         record.items.forEach(item => {
             const product = productIndex[item.sku];
+            
             if (!product) {
-                console.warn(`Товар ${item.sku} не найден`);
+                console.warn(`Товар с артикулом ${item.sku} не найден, пропускаем`);
                 return;
             }
             
+            const cost = product.purchase_price * item.quantity;
             const revenue = calculateRevenue(item, product);
-            const cost = product.cost_price * item.quantity;
             const profit = revenue - cost;
             
-            seller.revenue += revenue;
             seller.profit += profit;
-            seller.sales_count += item.quantity;
             
             if (!seller.products_sold[item.sku]) {
                 seller.products_sold[item.sku] = 0;
@@ -96,45 +98,40 @@ function analyzeSalesData(data, options) {
         });
     });
 
-    const sellersWithSales = sellerStats.filter(seller => seller.sales_count > 0);
-    
-    if (sellersWithSales.length === 0) {
-        return [];
-    }
-    
-    sellersWithSales.sort((a, b) => b.profit - a.profit);
+    sellerStats.sort((a, b) => b.profit - a.profit);
 
-    const totalSellers = sellersWithSales.length;
-    
-    sellersWithSales.forEach((seller, index) => {
-        const originalSeller = data.sellers.find(s => s.id === seller.id);
-        const sellerWithStats = {
-            ...originalSeller,
-            profit: seller.profit,
-            revenue: seller.revenue,
-            sales_count: seller.sales_count
-        };
+    sellerStats.forEach((seller, index) => {
+        seller.bonus = calculateBonus(index, sellerStats.length, seller);
         
-        seller.bonus = calculateBonus(index, totalSellers, sellerWithStats);
-    });
-
-    return sellersWithSales.map(seller => {
-        const topProducts = Object.entries(seller.products_sold)
-            .sort(([,a], [,b]) => b - a)
-            .slice(0, 10)
+        // Исправленная сортировка топ-продуктов
+        seller.top_products = Object.entries(seller.products_sold)
             .map(([sku, quantity]) => ({
-                sku,
-                quantity
-            }));
-
-        return {
-            seller_id: seller.id,
-            name: seller.name,
-            revenue: Math.round(seller.revenue * 100) / 100,
-            profit: Math.round(seller.profit * 100) / 100,
-            sales_count: seller.sales_count,
-            bonus: Math.round(seller.bonus * 100) / 100,
-            top_products: topProducts
-        };
+                sku: sku,
+                quantity: quantity,
+                product_name: productIndex[sku]?.name || 'Неизвестный товар'
+            }))
+            .sort((a, b) => {
+                // Сначала сортируем по количеству (по убыванию)
+                if (b.quantity !== a.quantity) {
+                    return b.quantity - a.quantity;
+                }
+                // Если количество одинаковое, сортируем по SKU (по возрастанию)
+                // для стабильной сортировки
+                return a.sku.localeCompare(b.sku);
+            })
+            .slice(0, 10);
+            
+        // Удаляем products_sold из финального результата
+        delete seller.products_sold;
     });
+
+    return sellerStats.map(seller => ({
+        seller_id: seller.id,
+        name: seller.name,
+        revenue: +(seller.revenue.toFixed(2)),
+        profit: +(seller.profit.toFixed(2)),
+        sales_count: seller.sales_count,
+        top_products: seller.top_products,
+        bonus: +(seller.bonus.toFixed(2))
+    }));
 }
