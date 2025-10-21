@@ -81,6 +81,7 @@ function analyzeSalesData(data, options) {
             const product = productIndex[item.sku];
             
             if (!product) {
+                console.warn(`Товар с артикулом ${item.sku} не найден, пропускаем`);
                 return;
             }
             
@@ -102,26 +103,14 @@ function analyzeSalesData(data, options) {
     sellerStats.forEach((seller, index) => {
         seller.bonus = calculateBonus(index, sellerStats.length, seller);
         
-        // Исправленная сортировка топ-продуктов
         seller.top_products = Object.entries(seller.products_sold)
             .map(([sku, quantity]) => ({
                 sku: sku,
                 quantity: quantity,
                 product_name: productIndex[sku]?.name || 'Неизвестный товар'
             }))
-            .sort((a, b) => {
-                // Сначала сортируем по количеству (по убыванию)
-                if (b.quantity !== a.quantity) {
-                    return b.quantity - a.quantity;
-                }
-                // Если количество одинаковое, сортируем по SKU (по возрастанию)
-                // для стабильной сортировки
-                return a.sku.localeCompare(b.sku);
-            })
+            .sort((a, b) => b.quantity - a.quantity)
             .slice(0, 10);
-            
-        // Удаляем products_sold из финального результата
-        delete seller.products_sold;
     });
 
     return sellerStats.map(seller => ({
