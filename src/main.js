@@ -81,7 +81,6 @@ function analyzeSalesData(data, options) {
             const product = productIndex[item.sku];
             
             if (!product) {
-                console.warn(`Товар с артикулом ${item.sku} не найден, пропускаем`);
                 return;
             }
             
