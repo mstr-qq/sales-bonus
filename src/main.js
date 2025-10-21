@@ -121,7 +121,8 @@ function analyzeSalesData(data, options) {
             const revenue = calculateRevenue(item, product);
             const profit = revenue - cost;
             
-            seller.revenue += revenue;  // Добавлено: суммируем revenue по товарам
+            // Округление revenue перед суммированием для соответствия тестам
+            seller.revenue += +(revenue.toFixed(2));
             seller.profit += profit;
             
             if (!seller.products_sold[item.sku]) {
@@ -136,11 +137,11 @@ function analyzeSalesData(data, options) {
     sellerStats.forEach((seller, index) => {
         seller.bonus = calculateBonus(index, sellerStats.length, seller);
         
+        // Убрано product_name из top_products для соответствия ожидаемому результату теста
         seller.top_products = Object.entries(seller.products_sold)
             .map(([sku, quantity]) => ({
                 sku: sku,
-                quantity: quantity,
-                product_name: productIndex[sku]?.name || 'Неизвестный товар'
+                quantity: quantity
             }))
             .sort((a, b) => b.quantity - a.quantity)
             .slice(0, 10);
